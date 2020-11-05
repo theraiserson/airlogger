@@ -1,7 +1,12 @@
 #include <Arduino.h>
-#include <paulvha_SCD30.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME680.h>
+
+#if defined(ESP32)
+  #include <SparkFun_SCD30_Arduino_Library.h>
+#elif defined(ESP8266)
+  #include <paulvha_SCD30.h>
+#endif
 
 #define SCD30WIRE Wire
 
