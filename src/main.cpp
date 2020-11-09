@@ -1,88 +1,216 @@
+// A lot of the BSEC code is taken over from https://github.com/BoschSensortec/BSEC-Arduino-library/blob/996a03594faf3b889efd69a0ca92e55a9ce242b2/examples/basic/basic.ino
+
 #include <Arduino.h>
-#include <Adafruit_Sensor.h>
-#include <Adafruit_BME680.h>
+#include "bsec.h"
+#include <PubSubClient.h>
+
+// Copy over "_constants.h.example" to "_constants.h" and update it with the according
+//	values for your network
+#include "_constants.h"
 
 #if defined(ESP32)
-  #include <SparkFun_SCD30_Arduino_Library.h>
+    #include <SparkFun_SCD30_Arduino_Library.h>
+    #include <WiFi.h>
 #elif defined(ESP8266)
-  #include <paulvha_SCD30.h>
+    #include <paulvha_SCD30.h>
+    #include <ESP8266WiFi.h>
+#endif
+
+// For some reason "LED_BUILTIN" is not defined for ESP32
+#ifndef LED_BUILTIN
+    #define LED_BUILTIN 2
 #endif
 
 #define SCD30WIRE Wire
 
-#define SEALEVELPRESSURE_HPA (1013.25)
+// Helper functions declarations
+void checkIaqSensorStatus(void);
+void errLeds(void);
+void setupWifi(void);
+void reconnectMqtt(void);
 
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
+const char* mqtt_server = MQTT_SERVER_IP;
+
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
 SCD30 scd30;
-Adafruit_BME680 bme680;
+Bsec iaqSensor;
+String output;
 
 void setup() {
+    delay(1000);
     SCD30WIRE.begin();
-
     Serial.begin(9600);
-    delay(5000);
     Serial.println("Los geht's!");
 
     //Check SCD30
     if (scd30.begin(Wire)) {
         Serial.println("SCD30 detected.");
-    } 
-    else {
+    } else {
         Serial.println("SCD30 not detected.");
     }
 
-    //Check BME680
-    if (bme680.begin()) {
-        Serial.println("BME680 detected.");
-    }
-    else {
-        Serial.println("BME680 not detected.");
-    }
-    
-    bme680.setTemperatureOversampling(BME680_OS_8X);
-    bme680.setHumidityOversampling(BME680_OS_2X);
-    bme680.setPressureOversampling(BME680_OS_4X);
-    bme680.setIIRFilterSize(BME680_FILTER_SIZE_3);
-    bme680.setGasHeater(320, 150); // 320*C for 150 ms
+    iaqSensor.begin(BME680_I2C_ADDR_SECONDARY, Wire);
+    output = "\nBSEC library version " + String(iaqSensor.version.major) + "." + String(iaqSensor.version.minor) + "." + String(iaqSensor.version.major_bugfix) + "." + String(iaqSensor.version.minor_bugfix);
+    Serial.println(output);
+    checkIaqSensorStatus();
+
+    bsec_virtual_sensor_t sensorList[10] = {
+        BSEC_OUTPUT_RAW_TEMPERATURE,
+        BSEC_OUTPUT_RAW_PRESSURE,
+        BSEC_OUTPUT_RAW_HUMIDITY,
+        BSEC_OUTPUT_RAW_GAS,
+        BSEC_OUTPUT_IAQ,
+        BSEC_OUTPUT_STATIC_IAQ,
+        BSEC_OUTPUT_CO2_EQUIVALENT,
+        BSEC_OUTPUT_BREATH_VOC_EQUIVALENT,
+        BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_TEMPERATURE,
+        BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_HUMIDITY,
+    };
+
+    iaqSensor.updateSubscription(sensorList, 10, BSEC_SAMPLE_RATE_LP);
+    checkIaqSensorStatus();
+
+    setupWifi();
 }
 
 void loop() {
-    if (scd30.dataAvailable())
-    {
-        Serial.print("co2(ppm):");
-        Serial.print(scd30.getCO2());
-        Serial.print(" temp(C):");
-        Serial.print(scd30.getTemperature(),1);
-        Serial.print(" humidity(%)");
-        Serial.print(scd30.getHumidity(),1);
-
-        Serial.println();
+    if (!mqttClient.connected()) {
+        reconnectMqtt();
     }
-    else
-    {
-        Serial.println("SCD30: No data.");
-    }
-    if (bme680.performReading())
-    {
-        Serial.print("Temperature (C): ");
-        Serial.println(bme680.temperature);
+    mqttClient.loop();
+    
+    unsigned long time_trigger = millis();
+    if (iaqSensor.run()) { // If new data is available
+        output = "New data for timestamp " + String(time_trigger) + ":";
+        output += "\n raw temperature [°C]: " + String(iaqSensor.rawTemperature);
+        output += "\n pressure [hPa]: " + String(iaqSensor.pressure);
+        output += "\n raw relative humidity [%]: " + String(iaqSensor.rawHumidity);
+        output += "\n gas [Ohm]: " + String(iaqSensor.gasResistance);
+        output += "\n IAQ: " + String(iaqSensor.iaq);
+        output += "\n IAQ accuracy: " + String(iaqSensor.iaqAccuracy);
+        output += "\n temperature [°C]: " + String(iaqSensor.temperature);
+        output += "\n relative humidity [%]: " + String(iaqSensor.humidity);
+        output += "\n Static IAQ: " + String(iaqSensor.staticIaq);
+        output += "\n CO2 equivalent: " + String(iaqSensor.co2Equivalent);
+        output += "\n breath VOC equivalent: " + String(iaqSensor.breathVocEquivalent);
+        Serial.println(output);
 
-        Serial.print("Pressure (hPa): ");
-        Serial.println(bme680.pressure);
+        mqttClient.publish("airlogger/rawTemperature", String(iaqSensor.rawTemperature).c_str());
+        mqttClient.publish("airlogger/pressure", String(iaqSensor.pressure).c_str());
+        mqttClient.publish("airlogger/rawHumidity", String(iaqSensor.rawHumidity).c_str());
+        mqttClient.publish("airlogger/gasResistance", String(iaqSensor.gasResistance).c_str());
+        mqttClient.publish("airlogger/iaq", String(iaqSensor.iaq).c_str());
+        mqttClient.publish("airlogger/iaqAccuracy", String(iaqSensor.iaqAccuracy).c_str());
+        mqttClient.publish("airlogger/temperature", String(iaqSensor.temperature).c_str());
+        mqttClient.publish("airlogger/humidity", String(iaqSensor.humidity).c_str());
+        mqttClient.publish("airlogger/staticIaq", String(iaqSensor.staticIaq).c_str());
+        mqttClient.publish("airlogger/co2Equivalent", String(iaqSensor.co2Equivalent).c_str());
+        mqttClient.publish("airlogger/breathVocEquivalent", String(iaqSensor.breathVocEquivalent).c_str());
         
-        Serial.print("Humidity (%): ");
-        Serial.println(bme680.humidity);
-
-        Serial.print("VOC (KOhms)= ");
-        Serial.println(bme680.gas_resistance / 1000.0);
-
-        Serial.print("Approx. Altitude (m)= ");
-        Serial.println(bme680.readAltitude(SEALEVELPRESSURE_HPA));        
+        if (scd30.dataAvailable()) {
+            String scd30Co2 = String(scd30.getCO2());
+            Serial.println(" co2(ppm): " + scd30Co2);
+            Serial.println(" temp(C): " + String(scd30.getTemperature()));
+            Serial.println(" humidity(%): " + String(scd30.getHumidity()));
+            Serial.println();
+            mqttClient.publish("airlogger/co2", scd30Co2.c_str());
+        } else {
+            Serial.println("SCD30: No data.");
+        }
+    } else {
+        checkIaqSensorStatus();
     }
-    else
-    {
-        Serial.println("BME680: No data.");
+}
+
+void checkIaqSensorStatus(void) {
+    if (iaqSensor.status != BSEC_OK) {
+        if (iaqSensor.status < BSEC_OK) {
+            output = "BSEC error code : " + String(iaqSensor.status);
+            Serial.println(output);
+            // I encoutered status code -2 error once and this locked up the board as expected
+            // Howver I'm interested in what happens if we just let it continue,
+            //  therefore just blinking for a short bit now
+            //for (;;)
+            //    errLeds(); /* Halt in case of failure */
+            mqttClient.publish("airlogger/iaqError", String(iaqSensor.status).c_str());
+            delay(1000);
+            errLeds();
+            delay(1000);
+            errLeds();
+            delay(1000);
+        } else {
+            output = "BSEC warning code : " + String(iaqSensor.status);
+            Serial.println(output);
+        }
     }
-    
-    delay(2000);
-    
+
+    if (iaqSensor.bme680Status != BME680_OK) {
+        if (iaqSensor.bme680Status < BME680_OK) {
+            output = "BME680 error code : " + String(iaqSensor.bme680Status);
+            Serial.println(output);
+            //for (;;)
+            //    errLeds(); /* Halt in case of failure */
+            mqttClient.publish("airlogger/iaqError", String(iaqSensor.status).c_str());
+            delay(1000);
+            errLeds();
+            delay(1000);
+            errLeds();
+            delay(1000);
+        } else {
+            output = "BME680 warning code : " + String(iaqSensor.bme680Status);
+            Serial.println(output);
+        }
+    }
+}
+
+void setupWifi() {
+    // We start by connecting to a WiFi network
+    Serial.println();
+    Serial.print("Connecting to ");
+    Serial.println(ssid);
+
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
+
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+
+    Serial.println("");
+    Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+    WiFi.setAutoReconnect(true);
+
+    Serial.println("WiFi connected");
+    mqttClient.setServer(mqtt_server, 1883); //connecting to mqtt server
+}
+
+void reconnectMqtt() {
+  // Loop until we're reconnected
+  while (!mqttClient.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (mqttClient.connect("airlogger")) {
+      Serial.println("connected");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(mqttClient.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
+
+void errLeds(void) {
+    pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(100);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(100);
 }
