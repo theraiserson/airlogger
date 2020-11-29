@@ -43,17 +43,9 @@ Bsec iaqSensor;
 void setup() {
     Serial.begin(9600);
     Serial.println("Los geht's!");
-    Wire.begin();
+    setupWifi();
 
-    //Check SCD30
-    if (scd30.begin(Wire)) {
-        Serial.println("SCD30 detected.");
-    } else {
-        Serial.println("SCD30 not detected.");
-    }
-    if (!scd30.setMeasurementInterval(scd30MeasurementInterval / 1000)) {
-        Serial.println("Failed to set SCD30 measurement interval");
-    }
+    Wire.begin();
 
     iaqSensor.begin(BME680_I2C_ADDR_SECONDARY, Wire);
     Serial.println("\nBSEC library version " + String(iaqSensor.version.major) + "." + String(iaqSensor.version.minor) + "." + String(iaqSensor.version.major_bugfix) + "." + String(iaqSensor.version.minor_bugfix));
@@ -75,7 +67,16 @@ void setup() {
     iaqSensor.updateSubscription(sensorList, 10, BSEC_SAMPLE_RATE_LP);
     checkIaqSensorStatus();
 
-    setupWifi();
+    // Start SCD30 after BSEC to allow it to
+    // configure clock streching correctly on ESP8266
+    if (scd30.begin(Wire)) {
+        Serial.println("SCD30 detected.");
+    } else {
+        Serial.println("SCD30 not detected.");
+    }
+    if (!scd30.setMeasurementInterval(scd30MeasurementInterval / 1000)) {
+        Serial.println("Failed to set SCD30 measurement interval");
+    }
 }
 
 unsigned long lastPressureUpdate = 0;
