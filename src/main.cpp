@@ -21,8 +21,6 @@
     #define LED_BUILTIN 2
 #endif
 
-#define SCD30WIRE Wire
-
 // Helper functions declarations
 void checkIaqSensorStatus(void);
 void errLeds(void);
@@ -34,17 +32,18 @@ const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 const char* mqtt_server = MQTT_SERVER_IP;
 
+const int pressureUpdateInterval = 60000 * 5; // every 5 minutes
+const int scd30MeasurementInterval = 5000; // every 5 seconds
+
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 SCD30 scd30;
 Bsec iaqSensor;
-String output;
 
 void setup() {
-    delay(1000);
-    SCD30WIRE.begin();
     Serial.begin(9600);
     Serial.println("Los geht's!");
+    Wire.begin();
 
     //Check SCD30
     if (scd30.begin(Wire)) {
@@ -52,10 +51,12 @@ void setup() {
     } else {
         Serial.println("SCD30 not detected.");
     }
+    if (!scd30.setMeasurementInterval(scd30MeasurementInterval / 1000)) {
+        Serial.println("Failed to set SCD30 measurement interval");
+    }
 
     iaqSensor.begin(BME680_I2C_ADDR_SECONDARY, Wire);
-    output = "\nBSEC library version " + String(iaqSensor.version.major) + "." + String(iaqSensor.version.minor) + "." + String(iaqSensor.version.major_bugfix) + "." + String(iaqSensor.version.minor_bugfix);
-    Serial.println(output);
+    Serial.println("\nBSEC library version " + String(iaqSensor.version.major) + "." + String(iaqSensor.version.minor) + "." + String(iaqSensor.version.major_bugfix) + "." + String(iaqSensor.version.minor_bugfix));
     checkIaqSensorStatus();
 
     bsec_virtual_sensor_t sensorList[10] = {
@@ -77,17 +78,22 @@ void setup() {
     setupWifi();
 }
 
+unsigned long lastPressureUpdate = 0;
+unsigned long lastScd30Check = 0;
+
 void loop() {
     if (!mqttClient.connected()) {
         reconnectMqtt();
     }
     mqttClient.loop();
     
-    unsigned long time_trigger = millis();
+    unsigned long now = millis();
     if (iaqSensor.run()) { // If new data is available
-        output = "New data for timestamp " + String(time_trigger) + ":";
+        const float pressureHpa = iaqSensor.pressure / 100;
+        String output;
+        output = "BSEC: New data for timestamp " + String(now);
         output += "\n raw temperature [°C]: " + String(iaqSensor.rawTemperature);
-        output += "\n pressure [hPa]: " + String(iaqSensor.pressure / 100);
+        output += "\n pressure [hPa]: " + String(pressureHpa);
         output += "\n raw relative humidity [%]: " + String(iaqSensor.rawHumidity);
         output += "\n gas [Ohm]: " + String(iaqSensor.gasResistance);
         output += "\n IAQ: " + String(iaqSensor.iaq);
@@ -100,7 +106,7 @@ void loop() {
         Serial.println(output);
 
         publishMqtt("rawTemperature", String(iaqSensor.rawTemperature));
-        publishMqtt("pressure", String(iaqSensor.pressure / 100));
+        publishMqtt("pressure", String(pressureHpa));
         publishMqtt("rawHumidity", String(iaqSensor.rawHumidity));
         publishMqtt("gasResistance", String(iaqSensor.gasResistance));
         publishMqtt("iaq", String(iaqSensor.iaq));
@@ -111,8 +117,21 @@ void loop() {
         publishMqtt("co2Equivalent", String(iaqSensor.co2Equivalent));
         publishMqtt("breathVocEquivalent", String(iaqSensor.breathVocEquivalent));
         
+        if (now - lastPressureUpdate > pressureUpdateInterval) {
+            // Update ambient pressure
+            Serial.println("Updating SCD30 with new ambient pressure value [mbar]: " + String(pressureHpa));
+
+            if (!scd30.setAmbientPressure((uint16_t) pressureHpa)) {
+                Serial.println("Failed to update SCD30 with current ambient pressure");
+            }
+            lastPressureUpdate = now;
+        } ;
+    }
+
+    if (now - lastScd30Check > scd30MeasurementInterval) {
         if (scd30.dataAvailable()) {
             String scd30Co2 = String(scd30.getCO2());
+            Serial.println("SCD30: New data");
             Serial.println(" co2(ppm): " + scd30Co2);
             Serial.println(" temp(C): " + String(scd30.getTemperature()));
             Serial.println(" humidity(%): " + String(scd30.getHumidity()));
@@ -121,16 +140,14 @@ void loop() {
         } else {
             Serial.println("SCD30: No data.");
         }
-    } else {
-        checkIaqSensorStatus();
+        lastScd30Check = now;
     }
 }
 
 void checkIaqSensorStatus(void) {
     if (iaqSensor.status != BSEC_OK) {
         if (iaqSensor.status < BSEC_OK) {
-            output = "BSEC error code : " + String(iaqSensor.status);
-            Serial.println(output);
+            Serial.println("BSEC error code : " + String(iaqSensor.status));
             // I encoutered status code -2 error once and this locked up the board as expected
             // Howver I'm interested in what happens if we just let it continue,
             //  therefore just blinking for a short bit now
@@ -143,15 +160,13 @@ void checkIaqSensorStatus(void) {
             errLeds();
             delay(1000);
         } else {
-            output = "BSEC warning code : " + String(iaqSensor.status);
-            Serial.println(output);
+            Serial.println("BSEC warning code : " + String(iaqSensor.status));
         }
     }
 
     if (iaqSensor.bme680Status != BME680_OK) {
         if (iaqSensor.bme680Status < BME680_OK) {
-            output = "BME680 error code : " + String(iaqSensor.bme680Status);
-            Serial.println(output);
+            Serial.println("BME680 error code : " + String(iaqSensor.bme680Status));
             //for (;;)
             //    errLeds(); /* Halt in case of failure */
             publishMqtt("iaqError", String(iaqSensor.status));
@@ -161,8 +176,7 @@ void checkIaqSensorStatus(void) {
             errLeds();
             delay(1000);
         } else {
-            output = "BME680 warning code : " + String(iaqSensor.bme680Status);
-            Serial.println(output);
+            Serial.println("BME680 warning code : " + String(iaqSensor.bme680Status));
         }
     }
 }
