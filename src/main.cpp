@@ -28,6 +28,7 @@ void checkIaqSensorStatus(void);
 void errLeds(void);
 void setupWifi(void);
 void reconnectMqtt(void);
+void publishMqtt(String topic, String payload);
 
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
@@ -98,17 +99,17 @@ void loop() {
         output += "\n breath VOC equivalent: " + String(iaqSensor.breathVocEquivalent);
         Serial.println(output);
 
-        mqttClient.publish("airlogger/rawTemperature", String(iaqSensor.rawTemperature).c_str());
-        mqttClient.publish("airlogger/pressure", String(iaqSensor.pressure / 100).c_str());
-        mqttClient.publish("airlogger/rawHumidity", String(iaqSensor.rawHumidity).c_str());
-        mqttClient.publish("airlogger/gasResistance", String(iaqSensor.gasResistance).c_str());
-        mqttClient.publish("airlogger/iaq", String(iaqSensor.iaq).c_str());
-        mqttClient.publish("airlogger/iaqAccuracy", String(iaqSensor.iaqAccuracy).c_str());
-        mqttClient.publish("airlogger/temperature", String(iaqSensor.temperature).c_str());
-        mqttClient.publish("airlogger/humidity", String(iaqSensor.humidity).c_str());
-        mqttClient.publish("airlogger/staticIaq", String(iaqSensor.staticIaq).c_str());
-        mqttClient.publish("airlogger/co2Equivalent", String(iaqSensor.co2Equivalent).c_str());
-        mqttClient.publish("airlogger/breathVocEquivalent", String(iaqSensor.breathVocEquivalent).c_str());
+        publishMqtt("rawTemperature", String(iaqSensor.rawTemperature));
+        publishMqtt("pressure", String(iaqSensor.pressure / 100));
+        publishMqtt("rawHumidity", String(iaqSensor.rawHumidity));
+        publishMqtt("gasResistance", String(iaqSensor.gasResistance));
+        publishMqtt("iaq", String(iaqSensor.iaq));
+        publishMqtt("iaqAccuracy", String(iaqSensor.iaqAccuracy));
+        publishMqtt("temperature", String(iaqSensor.temperature));
+        publishMqtt("humidity", String(iaqSensor.humidity));
+        publishMqtt("staticIaq", String(iaqSensor.staticIaq));
+        publishMqtt("co2Equivalent", String(iaqSensor.co2Equivalent));
+        publishMqtt("breathVocEquivalent", String(iaqSensor.breathVocEquivalent));
         
         if (scd30.dataAvailable()) {
             String scd30Co2 = String(scd30.getCO2());
@@ -116,7 +117,7 @@ void loop() {
             Serial.println(" temp(C): " + String(scd30.getTemperature()));
             Serial.println(" humidity(%): " + String(scd30.getHumidity()));
             Serial.println();
-            mqttClient.publish("airlogger/co2", scd30Co2.c_str());
+            publishMqtt("co2", scd30Co2);
         } else {
             Serial.println("SCD30: No data.");
         }
@@ -135,7 +136,7 @@ void checkIaqSensorStatus(void) {
             //  therefore just blinking for a short bit now
             //for (;;)
             //    errLeds(); /* Halt in case of failure */
-            mqttClient.publish("airlogger/iaqError", String(iaqSensor.status).c_str());
+            publishMqtt("iaqError", String(iaqSensor.status).c_str());
             delay(1000);
             errLeds();
             delay(1000);
@@ -153,7 +154,7 @@ void checkIaqSensorStatus(void) {
             Serial.println(output);
             //for (;;)
             //    errLeds(); /* Halt in case of failure */
-            mqttClient.publish("airlogger/iaqError", String(iaqSensor.status).c_str());
+            publishMqtt("iaqError", String(iaqSensor.status));
             delay(1000);
             errLeds();
             delay(1000);
@@ -164,6 +165,10 @@ void checkIaqSensorStatus(void) {
             Serial.println(output);
         }
     }
+}
+
+void publishMqtt(String topic, String payload) {
+    mqttClient.publish(String(MQTT_TOPIC_PREFIX + topic).c_str(), payload.c_str());
 }
 
 void setupWifi() {
