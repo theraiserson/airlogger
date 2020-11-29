@@ -86,7 +86,7 @@ void loop() {
     if (iaqSensor.run()) { // If new data is available
         output = "New data for timestamp " + String(time_trigger) + ":";
         output += "\n raw temperature [°C]: " + String(iaqSensor.rawTemperature);
-        output += "\n pressure [hPa]: " + String(iaqSensor.pressure);
+        output += "\n pressure [hPa]: " + String(iaqSensor.pressure / 100);
         output += "\n raw relative humidity [%]: " + String(iaqSensor.rawHumidity);
         output += "\n gas [Ohm]: " + String(iaqSensor.gasResistance);
         output += "\n IAQ: " + String(iaqSensor.iaq);
@@ -99,7 +99,7 @@ void loop() {
         Serial.println(output);
 
         mqttClient.publish("airlogger/rawTemperature", String(iaqSensor.rawTemperature).c_str());
-        mqttClient.publish("airlogger/pressure", String(iaqSensor.pressure).c_str());
+        mqttClient.publish("airlogger/pressure", String(iaqSensor.pressure / 100).c_str());
         mqttClient.publish("airlogger/rawHumidity", String(iaqSensor.rawHumidity).c_str());
         mqttClient.publish("airlogger/gasResistance", String(iaqSensor.gasResistance).c_str());
         mqttClient.publish("airlogger/iaq", String(iaqSensor.iaq).c_str());
