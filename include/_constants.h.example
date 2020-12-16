@@ -1,4 +1,0 @@
-#define WIFI_SSID "<ssid>"
-#define WIFI_PASSWORD "<password>"
-#define MQTT_SERVER_IP "xxx.xxx.xxx.xxx"
-#define MQTT_TOPIC_PREFIX "airlogger/" // must end with a slash. The example will result in e.g. "airlogger/co2"
