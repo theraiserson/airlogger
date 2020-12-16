@@ -1,0 +1,19 @@
+#define WIFI_SSID "XXXXXXXX"
+#define WIFI_PASSWORD "XXXXXXX"
+#define MQTT_SERVER_IP "255.255.255.255"
+#define MQTT_TOPIC_PREFIX "airlogger/" // must end with a slash. The example will result in e.g. "airlogger/co2"
+#define TS_USERNAME "XXX"
+#define TS_MQTT_API "XXX"
+#define TS_CHANNEL_WRITE_API "XXX"
+#define TS_CHANNEL_ID 12345678
+#define TS_SERVER "mqtt.thingspeak.com"
+#define TS_PUBLISH_INTERVAL 20 // Publish data every 20 seconds
+#define USE_MQTT true
+#define USE_TS true
+#define SCD_MEASUREMENT_INTERVAL 5 //Every 5 seconds
+/* Set your favorite method for publishing:
+0   - WAIT    - will wait until all sensor returned new data
+1   - LATEST  - will publish the latest available data of both sensors, even if its old data
+2   - NEW     - will publish the newest measurement, even if its only data of one sensor
+*/
+#define PUBLISH_METHOD 0
