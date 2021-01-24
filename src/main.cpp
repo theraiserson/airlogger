@@ -59,6 +59,7 @@ SCD30 scd30;
 Bsec iaqSensor;
 
 void setup() {
+    delay(100); //SCD30 requires >50ms to turn on
     Serial.begin(9600);
     Serial.println("Los geht's!");
     setupWifi();
