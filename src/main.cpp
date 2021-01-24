@@ -92,9 +92,31 @@ void setup() {
     } else {
         Serial.println("SCD30 not detected.");
     }
+
+    Serial.print("Setting SCD30 measuerement interval to ");
+    Serial.print(scdMeasurementInterval);
+    Serial.println(" seconds");
     if (!scd30.setMeasurementInterval(scdMeasurementInterval)) {
         Serial.println("Failed to set SCD30 measurement interval");
-    }  
+    }
+
+    Serial.println("Current configuration on SCD30:");
+    Serial.print("  Auto calibration set to ");
+    if (scd30.getAutoSelfCalibration()) {
+        Serial.println("TRUE");
+    } else {
+        Serial.println("FALSE");
+    }
+
+    unsigned int altitude = scd30.getAltitudeCompensation();
+    Serial.print("  Altitude compentsation set to ");
+    Serial.print(altitude);
+    Serial.println("m");
+
+    float offset = scd30.getTemperatureOffset();
+    Serial.print("  Temperature offset set to ");
+    Serial.print(offset, 2);
+    Serial.println("C");
 }
 
 unsigned long lastPressureUpdate = 0;
@@ -233,7 +255,7 @@ void publishMqtt() {
 }
 
 void publishSerial() {
-    String output = "\ntimestamp" + String(now) + "\n";
+    String output = "\nTimestamp: " + String(now) + "\n";
     if (PUBLISH_METHOD != 2) {
         if (iaq_new) output += "New IAQ-Data!";
         else output += "Old IAQ-Data.";
