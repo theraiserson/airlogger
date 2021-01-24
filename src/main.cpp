@@ -88,10 +88,15 @@ void setup() {
 
     // Start SCD30 after BSEC to allow it to
     // configure clock streching correctly on ESP8266
-    if (scd30.begin(Wire)) {
-        Serial.println("SCD30 detected.");
+    if (scd30.begin(Wire, false)) {
+        Serial.println("SCD30 detected");
     } else {
-        Serial.println("SCD30 not detected.");
+        Serial.println("SCD30 not detected on first attempt");
+        //Give it 2s to boot and then try again
+        delay(2000);
+        if (scd30.begin(Wire, false)) {
+          Serial.println("SCD30 detected on second attempt");
+        }
     }
 
     Serial.print("Setting SCD30 measuerement interval to ");
