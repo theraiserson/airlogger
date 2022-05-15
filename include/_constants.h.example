@@ -14,6 +14,10 @@
 #define TS_PUBLISH_INTERVAL 20 // Publish data every 20 seconds
 
 #define SCD_MEASUREMENT_INTERVAL 5 //Every 5 seconds
+
+// Especially when used in an enclosure, the heat dissipation from other components influence the BME's temperature reading and with that the SCD's calibration
+#define BME_TEMPERATURE_OFFSET 4 // Temperature offset in celcius
+
 /* Set your favorite method for publishing:
 0   - WAIT    - will wait until all sensor returned new data
 1   - LATEST  - will publish the latest available data of both sensors, even if its old data

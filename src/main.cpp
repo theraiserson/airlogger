@@ -66,6 +66,7 @@ void setup() {
 
     Wire.begin();
 
+    iaqSensor.setTemperatureOffset(BME_TEMPERATURE_OFFSET);
     iaqSensor.begin(BME680_I2C_ADDR_SECONDARY, Wire);
     Serial.println("\nBSEC library version " + String(iaqSensor.version.major) + "." + String(iaqSensor.version.minor) + "." + String(iaqSensor.version.major_bugfix) + "." + String(iaqSensor.version.minor_bugfix));
     checkIaqSensorStatus();
