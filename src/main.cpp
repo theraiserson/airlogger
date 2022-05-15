@@ -133,6 +133,8 @@ unsigned long lastTsPublish = 0;
 bool scd_new = false;
 bool iaq_new = false;
 
+uint16_t scd_co2 = 0;
+
 
 void loop() {
     if (use_mqtt) {
@@ -198,7 +200,7 @@ void readSensors(){
     if (iaqSensor.run() ) {
         iaq_new = true;
 
-        //Update SCD30 with new ambient pressure value (mbar)
+        // Update SCD30 with new ambient pressure value (mbar)
         if (now - lastPressureUpdate > pressureUpdateInterval) {
             // Update ambient pressure
             Serial.println("Updating SCD30 with new ambient pressure value [mbar].");
@@ -210,6 +212,8 @@ void readSensors(){
     }
     if (scd30.dataAvailable()) {
         scd_new = true;
+        // Pull SCD30 value into variable since multiple get-calls would lead to a new sensor read, result in 0 for the second call
+        scd_co2 = scd30.getCO2();
     }
 }
 
@@ -257,7 +261,7 @@ void publishMqtt() {
         publishMqtt("breathVocEquivalent", String(iaqSensor.breathVocEquivalent));
     }
     if (PUBLISH_METHOD !=2 || scd_new) {
-        publishMqtt("co2", String(scd30.getCO2()));
+        publishMqtt("co2", String(scd_co2));
     }
 }
 
@@ -284,9 +288,7 @@ void publishSerial() {
         output += "\n breath VOC equivalent: " + String(iaqSensor.breathVocEquivalent);
     }
     if (PUBLISH_METHOD !=2 || scd_new) {
-        output += "\n CO2(ppm) " + String(scd30.getCO2()) ;
-        output += "\n temperature [°C] " + String(scd30.getTemperature());
-        output += "\n relative humidity [%] " + String(scd30.getHumidity());
+        output += "\n CO2(ppm) " + String(scd_co2) ;
     }
     Serial.println(output);  
 }
@@ -301,14 +303,13 @@ void publishTS() {
         output += "&field5=" + String(iaqSensor.staticIaqAccuracy);
         output += "&field6=" + String(iaqSensor.co2Equivalent);
         output += "&field7=" + String(iaqSensor.co2Accuracy);
-        output += "&field8=" + String(scd30.getCO2());
+        output += "&field8=" + String(scd_co2);
 
         String topic = "channels/" + String(ts_channel_id) + "/publish/" + String(ts_channel_write_api);
         tsClient.publish(topic.c_str(), output.c_str());
 
         lastTsPublish = now;
     }
-
 }
 
 void setupWifi() {
