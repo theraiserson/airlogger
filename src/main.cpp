@@ -137,26 +137,31 @@ uint16_t scd_co2 = 0;
 
 
 void loop() {
-    if (use_mqtt) {
-        if (!mqttClient.connected()) {
-            reconnectMqtt();
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.print("Reconnecting to WiFi...");
+        WiFi.reconnect();
+        delay(500);
+    } else {
+        if (use_mqtt) {
+            if (!mqttClient.connected()) {
+                reconnectMqtt();
+            }
+            mqttClient.loop();
         }
-        mqttClient.loop();
-    }
-    
-    if (use_ts) {
-        if (!tsClient.connected())
-        {
-            reconnectTS();
-        }
-        tsClient.loop();        
-    }
-    
-    now = millis();
-    
-    readSensors();
 
-    publish();
+        if (use_ts) {
+            if (!tsClient.connected()) {
+                reconnectTS();
+            }
+            tsClient.loop();
+        }
+
+        now = millis();
+
+        readSensors();
+
+        publish();
+    }
 }
 
 void checkIaqSensorStatus(void) {
@@ -330,16 +335,20 @@ void setupWifi() {
     Serial.println("WiFi connected");
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
-    WiFi.setAutoReconnect(true);
 
     Serial.println("WiFi connected");
-    mqttClient.setServer(mqtt_server, 1883); //connecting to mqtt server
-    tsClient.setServer(ts_server, 1883);
+    if (use_mqtt) {
+        mqttClient.setServer(mqtt_server, 1883); //connecting to mqtt server
+    }
+
+    if (use_ts) {
+        tsClient.setServer(ts_server, 1883);
+    }
 }
 
 void reconnectMqtt() {
   // Loop until we're reconnected
-  while (!mqttClient.connected()) {
+  while (!mqttClient.connected() && WiFi.status() == WL_CONNECTED) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
     if (mqttClient.connect("airlogger")) {
@@ -355,7 +364,7 @@ void reconnectMqtt() {
 }
 
 void reconnectTS() {
-    while (!tsClient.connected()) {
+    while (!tsClient.connected() && WiFi.status() == WL_CONNECTED) {
     Serial.print("Attempting TS-MQTT connection...");
     // Attempt to connect
     if (tsClient.connect("airlogger",ts_username,ts_mqtt_api)) {
